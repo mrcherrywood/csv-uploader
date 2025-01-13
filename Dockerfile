@@ -6,32 +6,24 @@ WORKDIR /app
 # Install build dependencies
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@10.2.4 typescript@5.0.4 vite@4.2.1
+    rm -rf /var/lib/apt/lists/*
 
-# Copy package files and TypeScript configs
+# Copy package files and configs
 COPY package*.json ./
 COPY tsconfig*.json ./
 COPY vite.config.ts ./
+COPY index.html ./
 
-# Install all dependencies including devDependencies
-RUN npm install --ignore-scripts --verbose
+# Install dependencies
+RUN npm install --ignore-scripts
 
 # Copy source code
-COPY . .
-
-# Debug build environment
-RUN echo "Node version: $(node -v)" && \
-    echo "NPM version: $(npm -v)" && \
-    echo "TypeScript version: $(tsc -v)" && \
-    echo "Vite version: $(vite --version)" && \
-    echo "Directory contents:" && \
-    ls -la && \
-    echo "TypeScript config:" && \
-    cat tsconfig.json
+COPY src ./src
+COPY public ./public
 
 # Build the application
-RUN NODE_ENV=production npm run build || (echo "Build failed with error $?" && ls -la && exit 1)
+ENV NODE_ENV=production
+RUN npm run build
 
 # Runtime stage
 FROM node:18-slim
@@ -44,12 +36,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production dependencies
-COPY --from=builder /app/package*.json ./
-RUN npm install --omit=dev --no-optional --ignore-scripts --verbose
+COPY package*.json ./
+RUN npm install --omit=dev --no-optional --ignore-scripts
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/server ./server
+COPY server ./server
 
 # Set environment variables
 ENV NODE_ENV=production \
