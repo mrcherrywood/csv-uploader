@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import cors from 'cors';
 import uploadRouter from './routes/upload.js';
 
 // ES module dirname equivalent
@@ -12,7 +13,9 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Basic middleware
+app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Configure API routes
 app.use('/api/upload', uploadRouter);
@@ -29,7 +32,8 @@ app.get('/health', (req, res) => {
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      memory: process.memoryUsage()
+      memory: process.memoryUsage(),
+      env: process.env.NODE_ENV
     });
   } catch (error) {
     console.error('Health check error:', error);
@@ -64,7 +68,7 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(500).json({ error: 'Internal Server Error' });
+  res.status(500).json({ error: 'Internal Server Error', details: err.message });
 });
 
 // Start server
