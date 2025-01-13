@@ -4,8 +4,10 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
+import cors from 'cors';
 import { MemoryManager } from './utils/memory-manager.js';
 import { uploadHandler } from './middleware/upload-handler.js';
+import uploadRoutes from './routes/upload.js';
 
 // Load environment variables
 dotenv.config();
@@ -18,6 +20,9 @@ const PORT = process.env.PORT || 3000;
 
 // Enable gzip compression
 app.use(compression());
+
+// Enable CORS
+app.use(cors());
 
 // Configure rate limiting
 const limiter = rateLimit({
@@ -39,6 +44,9 @@ app.use(express.static(path.join(__dirname, '../dist'), {
 
 // Add upload handler for file uploads
 app.use('/api/upload', uploadHandler);
+
+// Add upload routes
+app.use('/api/upload', uploadRoutes);
 
 // Basic health check endpoint for Railway
 app.get('/health', (req, res) => {

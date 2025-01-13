@@ -4,7 +4,6 @@ import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
-import { processBatch } from './utils/batch-processor';
 
 type TableNames = keyof Database['public']['Tables'];
 
@@ -32,17 +31,6 @@ export const ImportHandler = ({
   } | null>(null);
   const { toast } = useToast();
 
-  // Debug preview data
-  useEffect(() => {
-    console.log('Preview data received:', {
-      hasData: !!previewData,
-      headers: previewData?.headers?.length,
-      rows: previewData?.rows?.length,
-      currentChunk: currentChunk?.rows?.length,
-      totalRows: totalRowCount
-    });
-  }, [previewData]);
-
   // Handle incoming preview data
   useEffect(() => {
     if (!previewData) return;
@@ -54,10 +42,7 @@ export const ImportHandler = ({
       isImporting
     });
 
-    // Update current chunk
     setCurrentChunk({ rows, headers });
-    
-    // Update total row count
     setTotalRowCount(prev => prev + rows.length);
   }, [previewData]);
 
@@ -86,43 +71,18 @@ export const ImportHandler = ({
       return;
     }
 
-    console.log('Starting import:', {
-      table: selectedTable,
-      totalRows: totalRowCount,
-      currentChunkSize: currentChunk.rows.length,
-      mappingKeys: Object.keys(columnMapping)
-    });
-
     setIsImporting(true);
     setProgress(0);
     setProcessedCount(0);
 
-    let totalErrorCount = 0;
-    let totalSuccessCount = 0;
-    
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-
-      const { data: job, error: jobError } = await supabase
-        .from('upload_jobs')
-        .insert({
-          file_type: 'csv',
-          file_name: `${selectedTable}_import`,
-          status: 'processing',
-          start_time: new Date().toISOString(),
-          created_by: user?.id,
-          total_rows: totalRowCount
-        })
-        .select()
-        .single();
-
-      if (jobError) throw jobError;
-
-      console.log('Created import job:', {
-        jobId: job.job_id,
-        totalRows: totalRowCount
-      });
+      // Convert rows to CSV format
+      const csvContent = currentChunk.rows.map(row => row.join(',')).join('\n');
+      const csvBlob = new Blob([currentChunk.headers.join(',') + '\n' + csvContent], { type: 'text/csv' });
+      const formData = new FormData();
+      formData.append('file', csvBlob, 'import.csv');
+      formData.append('tableName', selectedTable);
+      formData.append('columnMapping', JSON.stringify(columnMapping));
 
       const progressToast = toast({
         title: 'Import Progress',
@@ -130,67 +90,28 @@ export const ImportHandler = ({
         duration: Infinity,
       });
 
-      // Process the current chunk
-      if (currentChunk.rows.length > 0) {
-        const { errorCount: chunkErrorCount, successCount: chunkSuccessCount } = await processBatch(
-          currentChunk.rows,
-          currentChunk.headers,
-          columnMapping,
-          selectedTable,
-          job.job_id,
-          processedCount
-        );
+      // Send to server for processing
+      const response = await fetch('/api/upload/process', {
+        method: 'POST',
+        body: formData
+      });
 
-        console.log('Chunk processing result:', {
-          errorCount: chunkErrorCount,
-          successCount: chunkSuccessCount,
-          totalBefore: processedCount,
-          totalAfter: processedCount + chunkSuccessCount,
-          rowsProcessed: currentChunk.rows.length
-        });
-
-        totalErrorCount += chunkErrorCount;
-        totalSuccessCount += chunkSuccessCount;
-        const newProcessedCount = processedCount + currentChunk.rows.length;
-        setProcessedCount(newProcessedCount);
-
-        const currentProgress = Math.round((newProcessedCount / totalRowCount) * 100);
-        setProgress(currentProgress);
-
-        toast({
-          id: progressToast,
-          title: 'Import Progress',
-          description: `Processed ${newProcessedCount.toLocaleString()} of ${totalRowCount.toLocaleString()} rows (${currentProgress}%)`,
-          duration: Infinity,
-        });
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
       }
 
-      // Update job on completion
-      const { error: updateError } = await supabase
-        .from('upload_jobs')
-        .update({
-          status: totalErrorCount > 0 ? 'completed_with_errors' : 'completed',
-          end_time: new Date().toISOString(),
-          error_count: totalErrorCount,
-          success_count: totalSuccessCount,
-          total_rows: processedCount
-        })
-        .eq('job_id', job.job_id);
+      const result = await response.json();
 
-      if (updateError) throw updateError;
+      if (result.success) {
+        toast({
+          title: 'Import Complete',
+          description: `Successfully processed ${result.successCount.toLocaleString()} rows with ${result.errorCount.toLocaleString()} errors.`,
+          duration: 5000,
+        });
+      } else {
+        throw new Error(result.error || 'Unknown error occurred');
+      }
 
-      console.log('Import complete:', {
-        totalRows: totalRowCount,
-        processed: processedCount,
-        errors: totalErrorCount,
-        successes: totalSuccessCount
-      });
-
-      toast({
-        title: 'Import Complete',
-        description: `Successfully processed ${totalSuccessCount.toLocaleString()} rows with ${totalErrorCount.toLocaleString()} errors.`,
-        duration: 5000,
-      });
     } catch (error) {
       console.error('Import error:', error);
       toast({
@@ -200,61 +121,38 @@ export const ImportHandler = ({
       });
     } finally {
       setIsImporting(false);
-      setProgress(0);
+      setProgress(100);
     }
   };
 
-  const showImportButton = selectedTable && 
-    columnMapping && 
-    Object.keys(columnMapping).length > 0 && 
-    totalRowCount > 0;
-
-  console.log('Render state:', {
-    showImportButton,
-    hasTable: !!selectedTable,
-    hasMapping: !!columnMapping,
-    mappingKeys: columnMapping ? Object.keys(columnMapping) : [],
-    rowCount: totalRowCount,
-    isImporting
-  });
-
   return (
-    <div className="w-full max-w-xl mx-auto mt-8">
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Upload className="h-5 w-5 text-gray-500" />
-            <h3 className="text-lg font-semibold">Import Data</h3>
-          </div>
-          {isImporting && (
-            <div className="text-sm text-gray-500">
-              {progress}% complete
-            </div>
-          )}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-lg font-semibold">Import Data</h3>
+          <p className="text-sm text-gray-500">
+            {totalRowCount > 0
+              ? `Ready to import ${totalRowCount.toLocaleString()} rows`
+              : 'No data to import'}
+          </p>
         </div>
-
-        <div className="mb-4 text-sm text-gray-600">
-          {totalRowCount > 0 && (
-            <p>Ready to import {totalRowCount.toLocaleString()} rows</p>
-          )}
-          {!selectedTable && (
-            <p className="text-amber-600">Please select a table</p>
-          )}
-          {!columnMapping && (
-            <p className="text-amber-600">Please map columns</p>
-          )}
-        </div>
-
-        {showImportButton && (
-          <Button
-            className="w-full"
-            disabled={isImporting}
-            onClick={handleImport}
-          >
-            {isImporting ? 'Importing...' : 'Start Import'}
-          </Button>
-        )}
+        <Button
+          onClick={handleImport}
+          disabled={isImporting || totalRowCount === 0}
+          className="gap-2"
+        >
+          <Upload className="h-4 w-4" />
+          {isImporting ? 'Importing...' : 'Start Import'}
+        </Button>
       </div>
+      {isImporting && (
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div
+            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 };
