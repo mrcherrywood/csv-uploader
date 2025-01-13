@@ -9,6 +9,15 @@ interface BatchResult {
 
 type TableNames = keyof Database['public']['Tables'];
 
+// Configuration constants
+const CONFIG = {
+  BATCH_SIZE: Number(import.meta.env.VITE_MAX_BATCH_SIZE) || 10000,
+  MEMORY_BUFFER: Number(import.meta.env.VITE_MEMORY_BUFFER_PERCENTAGE) || 15,
+  MAX_RETRIES: 3,
+  RETRY_DELAY: 1000,
+  PROGRESS_INTERVAL: 5000
+};
+
 // Helper to check if a field should be treated as numeric
 const isNumericField = (fieldName: string): boolean => {
   const numericFields = ['amount', 'price', 'quantity', 'total', 'balance'];
@@ -37,8 +46,6 @@ export const processBatch = async (
   jobId: string,
   startIndex: number
 ): Promise<BatchResult> => {
-  const BATCH_SIZE = Number(process.env.MAX_BATCH_SIZE) || 10000;
-  const MEMORY_BUFFER = Number(process.env.MEMORY_BUFFER_PERCENTAGE) || 15; // Percentage
   let errorCount = 0;
   let successCount = 0;
   let lastProgressLog = Date.now();
@@ -46,23 +53,9 @@ export const processBatch = async (
 
   try {
     // Process rows in chunks to avoid memory issues
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    for (let i = 0; i < rows.length; i += CONFIG.BATCH_SIZE) {
       const batchStartTime = Date.now();
-      
-      // Check memory usage before processing batch
-      const memoryUsage = process.memoryUsage();
-      const usedMemoryPercentage = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
-      
-      // If memory usage is high, wait for GC
-      if (usedMemoryPercentage > (100 - MEMORY_BUFFER)) {
-        console.log(`Memory usage high (${usedMemoryPercentage.toFixed(2)}%). Waiting for GC...`);
-        if (global.gc) {
-          global.gc();
-          await delay(1000); // Wait for GC to complete
-        }
-      }
-
-      const batchRows = rows.slice(i, i + BATCH_SIZE);
+      const batchRows = rows.slice(i, i + CONFIG.BATCH_SIZE);
       
       // Convert batch to records with optimized memory usage
       const records = batchRows.map((row, index) => {
@@ -90,10 +83,9 @@ export const processBatch = async (
 
       // Perform upsert with retry logic
       let retryCount = 0;
-      const maxRetries = 3;
       let error;
 
-      while (retryCount < maxRetries) {
+      while (retryCount < CONFIG.MAX_RETRIES) {
         try {
           const { error: upsertError } = await supabase
             .from(tableName)
@@ -107,11 +99,11 @@ export const processBatch = async (
           }
           error = upsertError;
           retryCount++;
-          await delay(1000 * retryCount); // Exponential backoff
+          await delay(CONFIG.RETRY_DELAY * retryCount); // Exponential backoff
         } catch (e) {
           error = e;
           retryCount++;
-          await delay(1000 * retryCount);
+          await delay(CONFIG.RETRY_DELAY * retryCount);
         }
       }
 
@@ -133,21 +125,15 @@ export const processBatch = async (
 
       // Log progress every 5 seconds
       const now = Date.now();
-      if (now - lastProgressLog > 5000) {
+      if (now - lastProgressLog > CONFIG.PROGRESS_INTERVAL) {
         const batchTime = now - batchStartTime;
-        const rowsPerSecond = Math.round((BATCH_SIZE / batchTime) * 1000);
-        const memUsage = process.memoryUsage();
+        const rowsPerSecond = Math.round((CONFIG.BATCH_SIZE / batchTime) * 1000);
         
         console.log({
-          progress: `${Math.round(((i + BATCH_SIZE) / rows.length) * 100)}%`,
-          rowsProcessed: i + BATCH_SIZE,
+          progress: `${Math.round(((i + CONFIG.BATCH_SIZE) / rows.length) * 100)}%`,
+          rowsProcessed: i + CONFIG.BATCH_SIZE,
           totalRows: rows.length,
           rowsPerSecond,
-          memoryUsage: {
-            heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-            heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
-            external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
-          }
         });
         
         lastProgressLog = now;
