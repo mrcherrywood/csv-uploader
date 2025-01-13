@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@latest
+    npm install -g npm@10.2.4
 
 # Copy package files and install dependencies
 COPY package*.json ./
@@ -22,15 +22,15 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Install runtime dependencies and update npm
+# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@latest
+    npm install -g npm@10.2.4
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm install --production --ignore-scripts
+RUN npm install --omit=dev --no-optional
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
