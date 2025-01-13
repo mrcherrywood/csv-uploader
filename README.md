@@ -62,7 +62,115 @@ This project is built with .
 
 ## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/af7256c1-d06b-447d-845b-5b3d49335e06) and click on Share -> Publish.
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- Supabase account and project
+
+### Environment Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/mrcherrywood/csv-uploader.git
+   cd csv-uploader
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Create environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Update the `.env` file with your Supabase credentials and desired configuration:
+   ```env
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   PORT=3000
+   NODE_ENV=production
+   ```
+
+### Production Deployment
+
+1. Build the application:
+   ```bash
+   npm run build:prod
+   ```
+
+2. Start the server:
+   ```bash
+   npm run start:prod
+   ```
+
+Or use the combined deploy command:
+```bash
+npm run deploy
+```
+
+The application will be available at `http://your-server:3000`
+
+### Railway Deployment
+
+1. Install Railway CLI (optional):
+   ```bash
+   npm i -g @railway/cli
+   ```
+
+2. Deploy to Railway:
+   - Option 1: Direct from GitHub
+     1. Go to [Railway](https://railway.app/)
+     2. Click "Start a New Project"
+     3. Choose "Deploy from GitHub repo"
+     4. Select your repository
+     5. Add environment variables:
+        - `VITE_SUPABASE_URL`
+        - `VITE_SUPABASE_ANON_KEY`
+        - `NODE_ENV=production`
+
+   - Option 2: Using Railway CLI
+     ```bash
+     # Login to Railway
+     railway login
+
+     # Link to your project
+     railway link
+
+     # Deploy
+     railway up
+     ```
+
+3. Configure Memory (Important for Large Files):
+   - Go to your project settings in Railway
+   - Under "Settings" → "Memory"
+   - Set to at least 1GB (recommended 2GB for large files)
+
+4. Environment Variables:
+   - In Railway dashboard, go to "Variables"
+   - Add all variables from `.env.example`
+   - Make sure to set `NODE_ENV=production`
+
+5. Monitoring:
+   - Railway provides built-in logging
+   - Monitor memory usage in the Railway dashboard
+   - Check deployment status and logs in real-time
+
+### Performance Tuning
+
+For large datasets, you can adjust these environment variables:
+- `MAX_BATCH_SIZE`: Number of rows per database batch (default: 50000)
+- `PREVIEW_CHUNK_SIZE`: Number of rows per preview chunk (default: 100000)
+
+### Memory Management
+
+The server version is optimized for large datasets by:
+- Processing data in chunks
+- Efficient memory cleanup
+- Server-side batch processing
+- Progress tracking
 
 ## I want to use a custom domain - is that possible?
 
