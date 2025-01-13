@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18 AS builder
+FROM node:18-slim AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN apt-get update && \
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 # Copy source code and build
 COPY . .
@@ -21,7 +21,7 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Install curl for health check and clean up
+# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/*
@@ -30,7 +30,7 @@ RUN apt-get update && \
 COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copy built files from builder stage
+# Copy built files and server
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 
@@ -38,12 +38,18 @@ COPY --from=builder /app/server ./server
 ENV NODE_ENV=production \
     PORT=3000
 
+# Create non-root user
+RUN useradd -r -u 1001 -g root appuser && \
+    chown -R appuser:root /app
+
+USER appuser
+
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+# Health check with increased timeout
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Start the server
 CMD ["node", "server/index.js"]
