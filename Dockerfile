@@ -9,17 +9,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files and configs
-COPY package*.json ./
-COPY tsconfig*.json ./
-COPY vite.config.ts ./
-COPY index.html ./
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm install --ignore-scripts
+# Install dependencies including devDependencies
+RUN npm ci
 
-# Copy source code
-COPY src ./src
-COPY public ./public
+# Copy source files
+COPY . .
 
 # Build the application
 ENV NODE_ENV=production
@@ -36,8 +32,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production dependencies
-COPY package*.json ./
-RUN npm install --omit=dev --no-optional --ignore-scripts
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
