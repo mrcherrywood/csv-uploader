@@ -7,15 +7,17 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@10.2.4
+    npm install -g npm@10.2.4 typescript
 
 # Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy source code and build
+# Copy source code
 COPY . .
-RUN npm run build
+
+# Build the app
+RUN npm run build || (echo "Build failed" && exit 1)
 
 # Runtime stage
 FROM node:18-slim
@@ -25,11 +27,10 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@10.2.4
+    rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production dependencies
-COPY package*.json ./
+COPY --from=builder /app/package*.json ./
 RUN npm install --omit=dev --no-optional
 
 # Copy built files and server
