@@ -1,56 +1,43 @@
 import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-import rateLimit from 'express-rate-limit';
-import compression from 'compression';
 import cors from 'cors';
-import { MemoryManager } from './utils/memory-manager.js';
-import { uploadHandler } from './middleware/upload-handler.js';
-import uploadRoutes from './routes/upload.js';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
 
+// ES module dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable gzip compression
-app.use(compression());
-
-// Enable CORS
+// Basic middleware
 app.use(cors());
-
-// Configure rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use(limiter);
-
-// Increase payload limit for large file uploads
+app.use(compression());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve static files with caching
-app.use(express.static(path.join(__dirname, '../dist'), {
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
+// Serve static files from the dist directory
+app.use(express.static(join(__dirname, '../dist'), {
   maxAge: '1h',
   etag: true
 }));
 
-// Add upload handler for file uploads
-app.use('/api/upload', uploadHandler);
-
-// Add upload routes
-app.use('/api/upload', uploadRoutes);
-
-// Basic health check endpoint for Railway
+// Health check endpoint
 app.get('/health', (req, res) => {
-  const memoryUsage = MemoryManager.getMemoryUsage();
+  const memoryUsage = process.memoryUsage();
   res.status(200).json({
     status: 'healthy',
     memory: memoryUsage,
@@ -58,16 +45,18 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Handle SPA routing
+// Import and use upload routes
+const uploadRoutes = (await import('./routes/upload.js')).default;
+app.use('/api/upload', uploadRoutes);
+
+// Serve index.html for all other routes (SPA support)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  res.sendFile(join(__dirname, '../dist/index.html'));
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  MemoryManager.logMemoryUsage('Error Occurred');
-  
   res.status(500).json({
     error: 'Something broke!',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -76,18 +65,21 @@ app.use((err, req, res, next) => {
 
 // Periodic memory logging
 setInterval(() => {
-  MemoryManager.logMemoryUsage('Periodic Check');
+  console.log('Periodic memory usage:', process.memoryUsage());
 }, 5 * 60 * 1000); // Every 5 minutes
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  MemoryManager.logMemoryUsage('Server Start');
-  
-  // Log Railway-specific information
-  console.log({
-    railway_memory_mb: process.env.RAILWAY_MEMORY_MB || 'Not set',
-    railway_cpu_count: process.env.RAILWAY_CPU_COUNT || 'Not set',
-    railway_environment: process.env.RAILWAY_ENVIRONMENT || 'Not set'
+// Start server with error handling
+try {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+    console.log({
+      railway_memory_mb: process.env.RAILWAY_MEMORY_MB || 'Not set',
+      railway_cpu_count: process.env.RAILWAY_CPU_COUNT || 'Not set',
+      railway_environment: process.env.RAILWAY_ENVIRONMENT || 'Not set'
+    });
   });
-});
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+}

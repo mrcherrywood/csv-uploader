@@ -1,11 +1,18 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
-import csv from 'csv-parser';
+import { createClient } from '@supabase/supabase-js';
+import csvParser from 'csv-parser';
 import { Readable } from 'stream';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
+});
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -39,9 +46,19 @@ router.post('/process', upload.single('file'), async (req, res) => {
   let successCount = 0;
 
   try {
+    if (!req.file) {
+      throw new Error('No file uploaded');
+    }
+
     const { tableName, columnMapping } = req.body;
-    const fileBuffer = req.file.buffer;
-    
+    if (!tableName || !columnMapping) {
+      throw new Error('Missing required parameters');
+    }
+
+    const mappingObj = typeof columnMapping === 'string' 
+      ? JSON.parse(columnMapping) 
+      : columnMapping;
+
     // Create upload job
     const { data: job, error: jobError } = await supabase
       .from('upload_jobs')
@@ -56,9 +73,10 @@ router.post('/process', upload.single('file'), async (req, res) => {
 
     if (jobError) throw jobError;
 
-    // Process CSV file
+    // Set up CSV parsing stream
+    const fileBuffer = req.file.buffer;
     const stream = Readable.from(fileBuffer.toString())
-      .pipe(csv())
+      .pipe(csvParser())
       .on('data', async (row) => {
         const mappedRow = {
           job_id: job.job_id,
@@ -66,7 +84,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
         };
 
         // Map columns according to configuration
-        Object.entries(columnMapping).forEach(([source, target]) => {
+        Object.entries(mappingObj).forEach(([source, target]) => {
           mappedRow[target] = row[source];
         });
 
