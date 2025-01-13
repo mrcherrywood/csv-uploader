@@ -1,39 +1,28 @@
 # Build stage
-FROM node:18-slim AS builder
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && \
-    apt-get install -y python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
+# Copy package files
+COPY package*.json ./
 
-# Copy package files and configs
-COPY package.json package-lock.json ./
+# Install dependencies
+RUN npm install
 
-# Install dependencies including devDependencies
-RUN npm ci
-
-# Copy source files
+# Copy source code
 COPY . .
 
-# Build the application
-ENV NODE_ENV=production
+# Build the app
 RUN npm run build
 
-# Runtime stage
-FROM node:18-slim
+# Production stage
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && \
-    apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy package files and install production dependencies
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
+COPY package*.json ./
+RUN npm install --production
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
@@ -43,19 +32,8 @@ COPY server ./server
 ENV NODE_ENV=production \
     PORT=3000
 
-# Create non-root user
-RUN useradd -r -u 1001 -g root appuser && \
-    chown -R appuser:root /app && \
-    chmod -R g+w /app
-
-USER appuser
-
 # Expose port
 EXPOSE 3000
-
-# Health check with increased timeout
-HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Start the server
 CMD ["node", "server/index.js"]
