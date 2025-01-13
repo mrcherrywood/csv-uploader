@@ -6,11 +6,12 @@ WORKDIR /app
 # Install build dependencies
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g npm@latest
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install
 
 # Copy source code and build
 COPY . .
@@ -21,14 +22,15 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies and update npm
 RUN apt-get update && \
     apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g npm@latest
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+RUN npm install --production --ignore-scripts
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
@@ -40,7 +42,8 @@ ENV NODE_ENV=production \
 
 # Create non-root user
 RUN useradd -r -u 1001 -g root appuser && \
-    chown -R appuser:root /app
+    chown -R appuser:root /app && \
+    chmod -R g+w /app
 
 USER appuser
 
