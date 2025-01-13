@@ -90,8 +90,11 @@ export const ImportHandler = ({
         duration: Infinity,
       });
 
+      // Get the base URL from environment or default to current origin
+      const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
+      
       // Send to server for processing
-      const response = await fetch('/api/upload/process', {
+      const response = await fetch(`${baseUrl}/api/upload/process`, {
         method: 'POST',
         body: formData
       });

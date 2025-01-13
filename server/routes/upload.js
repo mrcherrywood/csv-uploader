@@ -3,6 +3,10 @@ import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import csvParser from 'csv-parser';
 import { Readable } from 'stream';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const router = express.Router();
 
@@ -15,10 +19,14 @@ const upload = multer({
 });
 
 // Initialize Supabase client
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
-);
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase credentials');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Batch processing function
 const processBatch = async (records, tableName, jobId) => {
@@ -39,7 +47,7 @@ const processBatch = async (records, tableName, jobId) => {
 
 // Upload endpoint
 router.post('/process', upload.single('file'), async (req, res) => {
-  const BATCH_SIZE = parseInt(process.env.VITE_MAX_BATCH_SIZE) || 10000;
+  const BATCH_SIZE = parseInt(process.env.VITE_MAX_BATCH_SIZE || '10000');
   let batch = [];
   let processedRows = 0;
   let errorCount = 0;

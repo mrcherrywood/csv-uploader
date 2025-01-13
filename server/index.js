@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import uploadRouter from './routes/upload.js';
 
 // ES module dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -12,6 +13,9 @@ const port = process.env.PORT || 3000;
 
 // Basic middleware
 app.use(express.json());
+
+// Configure API routes
+app.use('/api/upload', uploadRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

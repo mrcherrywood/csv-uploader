@@ -49,103 +49,76 @@ export const processBatch = async (
   let errorCount = 0;
   let successCount = 0;
   let lastProgressLog = Date.now();
-  let lastProcessedIndex = startIndex;
 
   try {
-    // Process rows in chunks to avoid memory issues
-    for (let i = 0; i < rows.length; i += CONFIG.BATCH_SIZE) {
-      const batchStartTime = Date.now();
-      const batchRows = rows.slice(i, i + CONFIG.BATCH_SIZE);
-      
-      // Convert batch to records with optimized memory usage
-      const records = batchRows.map((row, index) => {
-        const record: Record<string, any> = {
-          job_id: jobId,
-          row_index: startIndex + i + index
-        };
-        
-        headers.forEach((header, colIndex) => {
-          const columnName = columnMapping[header];
-          if (columnName) {
-            let value = row[colIndex]?.trim() || null;
-            if (isNumericField(columnName)) {
-              value = parseNumericValue(value);
-            }
-            record[columnName] = value;
-          }
-        });
-        
-        return record;
+    // Map the data to match the table schema
+    const mappedRows = rows.map((row, index) => {
+      const mappedRow: Record<string, any> = {
+        row_index: startIndex + index,
+        job_id: jobId
+      };
+
+      headers.forEach((header, colIndex) => {
+        const mappedColumn = columnMapping[header];
+        if (mappedColumn) {
+          const value = row[colIndex];
+          mappedRow[mappedColumn] = isNumericField(mappedColumn)
+            ? parseNumericValue(value)
+            : value;
+        }
       });
 
-      // Clear references to help GC
-      batchRows.length = 0;
+      return mappedRow;
+    });
 
-      // Perform upsert with retry logic
-      let retryCount = 0;
-      let error;
+    // Process in smaller chunks to avoid memory issues
+    for (let i = 0; i < mappedRows.length; i += CONFIG.BATCH_SIZE) {
+      const chunk = mappedRows.slice(i, i + CONFIG.BATCH_SIZE);
+      let retries = 0;
 
-      while (retryCount < CONFIG.MAX_RETRIES) {
+      while (retries < CONFIG.MAX_RETRIES) {
         try {
-          const { error: upsertError } = await supabase
+          const { error } = await supabase
             .from(tableName)
-            .upsert(records, {
+            .upsert(chunk, {
               onConflict: getPrimaryKeyFields(tableName).join(',')
             });
 
-          if (!upsertError) {
-            error = null;
-            break;
+          if (error) throw error;
+
+          successCount += chunk.length;
+          break;
+        } catch (error) {
+          console.error(`Error processing chunk ${i}:`, error);
+          retries++;
+
+          if (retries === CONFIG.MAX_RETRIES) {
+            errorCount += chunk.length;
+          } else {
+            await delay(CONFIG.RETRY_DELAY);
           }
-          error = upsertError;
-          retryCount++;
-          await delay(CONFIG.RETRY_DELAY * retryCount); // Exponential backoff
-        } catch (e) {
-          error = e;
-          retryCount++;
-          await delay(CONFIG.RETRY_DELAY * retryCount);
         }
       }
 
-      if (error) {
-        console.error('Batch insert error:', {
-          error,
-          batchSize: records.length,
-          startRow: startIndex + i,
-          retryCount
-        });
-        errorCount += records.length;
-      } else {
-        successCount += records.length;
-        lastProcessedIndex = startIndex + i + records.length;
-      }
-
-      // Clear references to help GC
-      records.length = 0;
-
-      // Log progress every 5 seconds
+      // Log progress periodically
       const now = Date.now();
-      if (now - lastProgressLog > CONFIG.PROGRESS_INTERVAL) {
-        const batchTime = now - batchStartTime;
-        const rowsPerSecond = Math.round((CONFIG.BATCH_SIZE / batchTime) * 1000);
-        
-        console.log({
-          progress: `${Math.round(((i + CONFIG.BATCH_SIZE) / rows.length) * 100)}%`,
-          rowsProcessed: i + CONFIG.BATCH_SIZE,
-          totalRows: rows.length,
-          rowsPerSecond,
-        });
-        
+      if (now - lastProgressLog >= CONFIG.PROGRESS_INTERVAL) {
+        console.log(`Progress: ${((i + chunk.length) / mappedRows.length * 100).toFixed(2)}%`);
         lastProgressLog = now;
       }
-
-      // Small delay between batches to prevent overwhelming the database
-      await delay(100);
     }
-  } catch (error) {
-    console.error('Processing error:', error);
-    throw error;
-  }
 
-  return { errorCount, successCount, lastProcessedIndex };
+    return {
+      errorCount,
+      successCount,
+      lastProcessedIndex: startIndex + rows.length - 1
+    };
+  } catch (error) {
+    console.error('Batch processing error:', error);
+    return {
+      errorCount: rows.length,
+      successCount: 0,
+      lastProcessedIndex: startIndex - 1
+    };
+  }
 };
