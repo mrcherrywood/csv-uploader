@@ -11,8 +11,8 @@ RUN apt-get update && \
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including devDependencies)
-RUN npm ci --verbose
+# Install all dependencies
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -25,18 +25,24 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Copy package files
+# Install production dependencies
 COPY package*.json ./
-
-# Install only production dependencies
-RUN npm ci --verbose --only=production
+RUN npm ci --omit=dev
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
 # Expose port
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Start the server
 CMD ["node", "server/index.js"]

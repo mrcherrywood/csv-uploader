@@ -10,31 +10,22 @@ const __dirname = dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Add error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
+// Basic middleware
+app.use(express.json());
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   try {
     // Check if dist directory exists
     const distPath = join(__dirname, '../dist');
-    const distExists = fs.existsSync(distPath);
-    
-    // Check if index.html exists
     const indexPath = join(distPath, 'index.html');
-    const indexExists = fs.existsSync(indexPath);
     
+    // Return basic health status
     res.json({ 
       status: 'ok',
-      checks: {
-        distExists,
-        indexExists,
-        distPath,
-        env: process.env.NODE_ENV
-      }
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage()
     });
   } catch (error) {
     console.error('Health check error:', error);
@@ -45,38 +36,46 @@ app.get('/health', (req, res) => {
   }
 });
 
-// Serve static files from the Vite build
+// Serve static files
 const distPath = join(__dirname, '../dist');
-console.log('Serving static files from:', distPath);
+console.log('Static files path:', distPath);
 
-if (!fs.existsSync(distPath)) {
-  console.error('dist directory not found at:', distPath);
-  console.log('Current directory contents:', fs.readdirSync(__dirname));
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  console.log('Serving static files from:', distPath);
 } else {
-  console.log('dist directory found. Contents:', fs.readdirSync(distPath));
+  console.warn('Warning: dist directory not found at:', distPath);
 }
 
-app.use(express.static(distPath));
-
-// Handle SPA routing - serve index.html for all other routes
+// Handle SPA routing
 app.get('*', (req, res) => {
   const indexPath = join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(404).json({ error: 'index.html not found' });
+    res.status(404).json({ error: 'Application not properly built' });
   }
 });
 
-// Start server with error handling
-try {
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Server started on port ${port}`);
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('Current directory:', __dirname);
-    console.log('Parent directory:', dirname(__dirname));
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+// Start server
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`Server started on port ${port}`);
+  console.log('Environment:', process.env.NODE_ENV);
+  console.log('Current directory:', __dirname);
+  console.log('Parent directory:', dirname(__dirname));
+});
+
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM signal, shutting down gracefully');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
   });
-} catch (error) {
-  console.error('Failed to start server:', error);
-  process.exit(1);
-}
+});
