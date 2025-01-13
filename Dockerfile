@@ -1,5 +1,4 @@
-# Build stage
-FROM node:18-alpine as builder
+FROM node:18-alpine
 
 WORKDIR /app
 
@@ -14,20 +13,6 @@ COPY . .
 
 # Build the app
 RUN npm run build
-
-# Production stage
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copy package files and install production dependencies
-COPY package*.json ./
-RUN apk add --no-cache npm && \
-    npm ci --only=production
-
-# Copy built files and server
-COPY --from=builder /app/dist ./dist
-COPY server ./server
 
 # Expose port
 EXPOSE 3000

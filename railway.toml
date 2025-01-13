@@ -3,7 +3,6 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "node server/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 
