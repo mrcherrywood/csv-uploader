@@ -9,14 +9,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     npm install -g npm@10.2.4 typescript
 
-# Copy package files and install dependencies
+# Copy package files
 COPY package*.json ./
-RUN npm install
+
+# Install dependencies without running scripts
+RUN npm install --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Build the app
+# Run build separately
 RUN npm run build || (echo "Build failed" && exit 1)
 
 # Runtime stage
@@ -31,7 +33,7 @@ RUN apt-get update && \
 
 # Copy package files and install production dependencies
 COPY --from=builder /app/package*.json ./
-RUN npm install --omit=dev --no-optional
+RUN npm install --omit=dev --no-optional --ignore-scripts
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
