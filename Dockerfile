@@ -7,19 +7,31 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@10.2.4 typescript
+    npm install -g npm@10.2.4 typescript vite
 
 # Copy package files
 COPY package*.json ./
+COPY tsconfig*.json ./
 
-# Install dependencies without running scripts
-RUN npm install --ignore-scripts
+# Install all dependencies including devDependencies
+RUN npm install --ignore-scripts --verbose
 
 # Copy source code
 COPY . .
 
-# Run build separately
-RUN npm run build || (echo "Build failed" && exit 1)
+# Debug build environment
+RUN npm list || true && \
+    ls -la && \
+    echo "Node version: $(node -v)" && \
+    echo "NPM version: $(npm -v)" && \
+    echo "TypeScript version: $(tsc -v)" && \
+    echo "Contents of tsconfig.json:" && \
+    cat tsconfig.json && \
+    echo "Contents of tsconfig.app.json:" && \
+    cat tsconfig.app.json
+
+# Run type check and build with verbose output
+RUN tsc --noEmit && npm run build --verbose || (echo "Build failed" && npm list && exit 1)
 
 # Runtime stage
 FROM node:18-slim
@@ -33,7 +45,7 @@ RUN apt-get update && \
 
 # Copy package files and install production dependencies
 COPY --from=builder /app/package*.json ./
-RUN npm install --omit=dev --no-optional --ignore-scripts
+RUN npm install --omit=dev --no-optional --ignore-scripts --verbose
 
 # Copy built files and server
 COPY --from=builder /app/dist ./dist
