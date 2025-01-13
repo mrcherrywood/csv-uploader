@@ -3,7 +3,7 @@ builder = "NIXPACKS"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node --max-old-space-size=4096 --expose-gc server/index.js"
+startCommand = "node --max-old-space-size=8192 --expose-gc server/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
@@ -11,5 +11,6 @@ restartPolicyMaxRetries = 3
 
 [deploy.env]
 NODE_ENV = "production"
-MAX_BATCH_SIZE = "50000"
-PREVIEW_CHUNK_SIZE = "100000"
+MAX_BATCH_SIZE = "10000"
+PREVIEW_CHUNK_SIZE = "50000"
+MEMORY_BUFFER_PERCENTAGE = "15"
