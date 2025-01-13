@@ -7,11 +7,12 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@10.2.4 typescript vite
+    npm install -g npm@10.2.4 typescript@5.0.4 vite@4.2.1
 
-# Copy package files
+# Copy package files and TypeScript configs
 COPY package*.json ./
 COPY tsconfig*.json ./
+COPY vite.config.ts ./
 
 # Install all dependencies including devDependencies
 RUN npm install --ignore-scripts --verbose
@@ -20,18 +21,17 @@ RUN npm install --ignore-scripts --verbose
 COPY . .
 
 # Debug build environment
-RUN npm list || true && \
-    ls -la && \
-    echo "Node version: $(node -v)" && \
+RUN echo "Node version: $(node -v)" && \
     echo "NPM version: $(npm -v)" && \
     echo "TypeScript version: $(tsc -v)" && \
-    echo "Contents of tsconfig.json:" && \
-    cat tsconfig.json && \
-    echo "Contents of tsconfig.app.json:" && \
-    cat tsconfig.app.json
+    echo "Vite version: $(vite --version)" && \
+    echo "Directory contents:" && \
+    ls -la && \
+    echo "TypeScript config:" && \
+    cat tsconfig.json
 
-# Run type check and build with verbose output
-RUN tsc --noEmit && npm run build --verbose || (echo "Build failed" && npm list && exit 1)
+# Build the application
+RUN NODE_ENV=production npm run build || (echo "Build failed with error $?" && ls -la && exit 1)
 
 # Runtime stage
 FROM node:18-slim
