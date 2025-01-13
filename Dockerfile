@@ -10,8 +10,8 @@ RUN apt-get update && \
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with verbose logging
-RUN npm install --verbose
+# Install dependencies
+RUN npm ci --verbose
 
 # Copy source code
 COPY . .
