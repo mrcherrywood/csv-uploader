@@ -1,4 +1,5 @@
-FROM node:18
+# Build stage
+FROM node:18 AS builder
 
 WORKDIR /app
 
@@ -10,7 +11,7 @@ RUN apt-get update && \
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install all dependencies (including devDependencies)
 RUN npm ci --verbose
 
 # Copy source code
@@ -18,6 +19,21 @@ COPY . .
 
 # Build the app
 RUN npm run build
+
+# Runtime stage
+FROM node:18-slim
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --verbose --only=production
+
+# Copy built files from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server ./server
 
 # Expose port
 EXPOSE 3000
